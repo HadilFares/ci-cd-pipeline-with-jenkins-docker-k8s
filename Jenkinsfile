@@ -12,21 +12,20 @@ pipeline {
             steps {
                 git branch: 'master', url: 'https://github.com/HadilFares/ci-cd-pipeline-with-jenkins-docker-k8s.git'
             }
-        }  // ⚠️ AJOUTE CETTE ACCOLADE FERMANTE !
+        }
         
         stage('Install kubectl') {
             steps {
                 script {
                     echo "📦 Installing kubectl in Jenkins..."
                     sh '''
-                    # Télécharger et installer kubectl
+                    # Télécharger kubectl (sans installation système)
                     curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
                     chmod +x kubectl
-                    sudo mv kubectl /usr/local/bin/
                     
                     # Vérifier l'installation
                     echo "🔧 kubectl version:"
-                    kubectl version --client
+                    ./kubectl version --client
                     '''
                 }
             }
@@ -66,25 +65,25 @@ pipeline {
                         
                         echo "🚀 Deploying to Kubernetes..."
                         echo "🔧 kubectl version:"
-                        kubectl version --client
+                        ./kubectl version --client
                         
                         # Appliquer la configuration K8s
-                        kubectl apply -f k8s-deploymentservice.yml --namespace=${K8S_NAMESPACE}
+                        ./kubectl apply -f k8s-deploymentservice.yml --namespace=${K8S_NAMESPACE}
                         
                         # Mettre à jour l'image
-                        kubectl set image deployment/nodeapp-deployment \\
+                        ./kubectl set image deployment/nodeapp-deployment \\
                         nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
                         --namespace=${K8S_NAMESPACE} --record=true
                         
                         # Attendre le déploiement
-                        kubectl rollout status deployment/nodeapp-deployment \\
+                        ./kubectl rollout status deployment/nodeapp-deployment \\
                         --namespace=${K8S_NAMESPACE} --timeout=300s
                         
                         echo "✅ Deployment successful!"
                         
                         # Afficher les infos
-                        kubectl get pods --namespace=${K8S_NAMESPACE}
-                        kubectl get services --namespace=${K8S_NAMESPACE}
+                        ./kubectl get pods --namespace=${K8S_NAMESPACE}
+                        ./kubectl get services --namespace=${K8S_NAMESPACE}
                         """
                     }
                 }
@@ -95,6 +94,7 @@ pipeline {
     post {
         success {
             echo "🎉 CI/CD Pipeline COMPLETED SUCCESSFULLY!"
+            echo "🚀 Application deployed to Kubernetes!"
         }
         failure {
             echo "❌ CI/CD Pipeline FAILED!"
