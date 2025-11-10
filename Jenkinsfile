@@ -7,6 +7,26 @@ pipeline {
         K8S_NAMESPACE = 'default'
     }
     
+
+    stage('Install kubectl') {
+    steps {
+        script {
+            sh '''
+            # Vérifier si kubectl est déjà installé
+            if ! command -v kubectl &> /dev/null; then
+                echo "📦 Installing kubectl..."
+                curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                chmod +x kubectl
+                sudo mv kubectl /usr/local/bin/
+            else
+                echo "✅ kubectl already installed"
+            fi
+            
+            kubectl version --client
+            '''
+        }
+    }
+}
     stages {
         stage('Checkout Code') {
             steps {
@@ -14,23 +34,6 @@ pipeline {
             }
         }
         
-
-        stage('Install kubectl') {
-            steps {
-                script {
-                    echo "📦 Installing kubectl..."
-                    sh '''
-                    # Installer kubectl
-                    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                    chmod +x kubectl
-                    sudo mv kubectl /usr/local/bin/
-                    kubectl version --client
-                    '''
-                }
-            }
-        }
-        
-
         stage('Build Docker Image') {
             steps {
                 script {
@@ -104,3 +107,4 @@ pipeline {
         }
     }
 }
+// ⚠️ SUPPRIME la parenthèse fermante en trop à la fin !
