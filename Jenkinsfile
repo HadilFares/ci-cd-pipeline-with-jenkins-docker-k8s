@@ -14,7 +14,6 @@ pipeline {
             }
         }
         
-        
         stage('Build Docker Image') {
             steps {
                 script {
@@ -41,7 +40,7 @@ pipeline {
             }
         }
         
-  stage('Deploy to K8s') {
+        stage('Deploy to K8s') {
             steps {
                 script {
                     withCredentials([file(credentialsId: 'kubernetes', variable: 'KUBECONFIG')]) {
@@ -59,7 +58,7 @@ pipeline {
                         --namespace=${K8S_NAMESPACE} --record=true
                         
                         # Attendre le déploiement
-                        kubectl rollout status deployment/hello-world-deployment \
+                        kubectl rollout status deployment/nodeapp-deployment \
                         --namespace=${K8S_NAMESPACE} --timeout=300s
                         
                         echo "✅ Deployment successful!"
@@ -73,6 +72,7 @@ pipeline {
             }
         }
     }
+    
     post {
         success {
             echo "🎉 CI/CD Pipeline COMPLETED SUCCESSFULLY!"
