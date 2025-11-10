@@ -36,7 +36,7 @@ pipeline {
                     }
                     
                     echo "📤 Pushing image to Docker Hub..."
-                    docker.push("${DOCKER_IMAGE}:${DOCKER_TAG}")
+                    sh "docker push ${DOCKER_IMAGE}:${DOCKER_TAG}"
                 }
             }
         }
