@@ -14,11 +14,9 @@ spec:
     args: ['\$(JENKINS_SECRET)', '\$(JENKINS_NAME)']
     resources:
       requests:
-        memory: "256Mi"
-        cpu: "250m"
-      limits:
         memory: "512Mi"
         cpu: "500m"
+  
   - name: docker
     image: docker:latest
     command: ['cat']
@@ -30,20 +28,7 @@ spec:
       requests:
         memory: "256Mi"
         cpu: "200m"
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
-  - name: kubectl
-    image: bitnami/kubectl:latest
-    command: ['/bin/sh', '-c', 'cat && tail -f /dev/null']
-    tty: true
-    resources:
-      requests:
-        memory: "256Mi"
-        cpu: "200m"
-      limits:
-        memory: "512Mi"
-        cpu: "500m"
+
   volumes:
   - name: docker-sock
     hostPath:
@@ -59,19 +44,28 @@ spec:
     }
     
     stages {
-        stage('Wait for Agent Initialization') {
-            steps {
-                script {
-                    echo "Waiting for agent containers to be ready..."
-                    sleep 30
-                }
-            }
-        }
-        
         stage('Checkout Code') {
             steps {
                 container('jnlp') {
                     git branch: 'master', url: 'https://github.com/HadilFares/ci-cd-pipeline-with-jenkins-docker-k8s.git'
+                }
+            }
+        }
+        
+        stage('Install kubectl in jnlp') {
+            steps {
+                container('jnlp') {
+                    script {
+                        sh """
+                            # Install kubectl in the jnlp container
+                            curl -LO "https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                            chmod +x kubectl
+                            mv kubectl /usr/local/bin/
+                            
+                            # Verify installation
+                            kubectl version --client
+                        """
+                    }
                 }
             }
         }
@@ -100,11 +94,8 @@ spec:
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
                             sh """
-                                echo \"Logging into Docker Hub...\"
                                 echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                                echo \"Pushing image to Docker Hub...\"
                                 docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                                echo \"Image pushed successfully!\"
                             """
                         }
                     }
@@ -114,58 +105,21 @@ spec:
         
         stage('Deploy to K8s') {
             steps {
-                container('kubectl') {
+                container('jnlp') {
                     script {
-                        echo "Testing kubectl container..."
-                        sh "kubectl version --client"
-                        
-                        echo "Deploying to Kubernetes..."
                         sh """
-                            # Test Kubernetes access
-                            echo "Kubernetes access test:"
-                            kubectl cluster-info
-                            kubectl get nodes
-                            
-                            # Create namespace if it doesn't exist
+                            echo "Deploying to Kubernetes..."
                             kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                            
-                            # Apply configuration
-                            echo "Applying Kubernetes configuration..."
                             kubectl apply -f k8s-deploymentservice.yml -n ${K8S_NAMESPACE}
-                            
-                            # Update image
-                            echo "Updating deployment image..."
                             kubectl set image deployment/nodeapp-deployment \\
                                 nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
                                 -n ${K8S_NAMESPACE}
-                            
-                            # Wait for rollout
-                            echo "Waiting for deployment rollout..."
-                            kubectl rollout status deployment/nodeapp-deployment \\
-                                -n ${K8S_NAMESPACE} --timeout=300s
-                            
-                            echo "Deployment successful!"
-                            
-                            # Show results
-                            echo "Deployment status:"
-                            kubectl get pods,services,deployments -n ${K8S_NAMESPACE}
+                            kubectl rollout status deployment/nodeapp-deployment -n ${K8S_NAMESPACE} --timeout=300s
+                            kubectl get all -n ${K8S_NAMESPACE}
                         """
                     }
                 }
             }
-        }
-    }
-    
-    post {
-        success {
-            echo "CI/CD Pipeline COMPLETED SUCCESSFULLY!"
-            echo "Application deployed to Kubernetes!"
-        }
-        failure {
-            echo "CI/CD Pipeline FAILED!"
-        }
-        always {
-            echo "Pipeline execution completed"
         }
     }
 }
