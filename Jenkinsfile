@@ -3,9 +3,43 @@ pipeline {
         kubernetes {
             label 'ci-agent'
             defaultContainer 'jnlp'
+            yaml """
+apiVersion: v1
+kind: Pod
+spec:
+  containers:
+  - name: jnlp
+    image: jenkins/inbound-agent:latest
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
+  - name: docker
+    image: docker:latest
+    command: ['cat']
+    tty: true
+    volumeMounts:
+    - name: docker-sock
+      mountPath: /var/run/docker.sock
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+  - name: kubectl
+    image: bitnami/kubectl:latest
+    command: ['cat']
+    tty: true
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
+  volumes:
+  - name: docker-sock
+    hostPath:
+      path: /var/run/docker.sock
+"""
         }
     }
-    
     environment {
         DOCKER_IMAGE = 'hadilfares/nodeapp'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
