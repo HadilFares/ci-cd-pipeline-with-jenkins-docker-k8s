@@ -107,15 +107,17 @@ stage('Deploy to K8s') {
         container('jnlp') {
             script {
                 sh """
-                    cd /tmp
-                    echo "Deploying to Kubernetes..."
-                    ./kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | ./kubectl apply -f -
-                    ./kubectl apply -f k8s-deploymentservice.yml -n ${K8S_NAMESPACE}
-                    ./kubectl set image deployment/nodeapp-deployment \\
+                    # Use the full workspace path
+                    WORKSPACE_PATH="\$(pwd)"
+                    echo "Workspace path: \$WORKSPACE_PATH"
+                    
+                    /tmp/kubectl apply -f "\$WORKSPACE_PATH/deployment.yml" -n ${K8S_NAMESPACE}
+                     /tmp/kubectl apply -f "\$WORKSPACE_PATH/service.yml" -n ${K8S_NAMESPACE}
+
+                    /tmp/kubectl set image deployment/nodeapp-deployment \\
                         nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
                         -n ${K8S_NAMESPACE}
-                    ./kubectl rollout status deployment/nodeapp-deployment -n ${K8S_NAMESPACE} --timeout=300s
-                    ./kubectl get all -n ${K8S_NAMESPACE}
+                     /tmp/kubectl rollout status deployment/nodeapp-deployment -n ${K8S_NAMESPACE} --timeout=300s
                 """
             }
         }
