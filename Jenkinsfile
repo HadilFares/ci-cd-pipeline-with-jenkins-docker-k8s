@@ -70,26 +70,10 @@ spec:
             steps {
                 container('docker') {
                     script {
-                        echo "🔄 Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        echo "Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
                         sh """
-                        # Vérifier les fichiers
-                        echo "Workspace content:"
-                        ls -la
-                        
-                        # Vérifier le Dockerfile
-                        if [ -f "Dockerfile" ]; then
-                            echo "Dockerfile found"
-                        else
-                            echo " Dockerfile not found!"
-                            exit 1
-                        fi
-                        
-                        # Builder l'image
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        
-                        # Vérifier que l'image est créée
-                        echo " Built images:"
-                        docker images | grep ${DOCKER_IMAGE} || echo "⚠️ Image not found in list"
+                        docker images
                         """
                     }
                 }
@@ -128,19 +112,6 @@ spec:
                         echo " Kubernetes access test:"
                         kubectl cluster-info
                         kubectl get nodes
-                        
-                        # Vérifier le fichier YAML
-                        echo "Checking YAML file:"
-                        if [ -f "k8s-deploymentservice.yml" ]; then
-                            echo "YAML file found"
-                            cat k8s-deploymentservice.yml
-                        else
-                            echo "k8s-deploymentservice.yml not found!"
-                            echo "Available files:"
-                            ls -la *.yml || echo "No YAML files found"
-                            exit 1
-                        fi
-                        
                         # Appliquer la configuration
                         echo "Applying Kubernetes configuration..."
                         kubectl apply -f k8s-deploymentservice.yml --namespace=${K8S_NAMESPACE}

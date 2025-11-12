@@ -16,7 +16,7 @@ spec:
     spec:
       containers:
       - name: nodeapp-container
-        image: hadilfares/nodeapp:latest  # Serra mis à jour par Jenkins
+        image: hadilfares/nodeapp:latest 
         ports:
         - containerPort: 3000
         env:
