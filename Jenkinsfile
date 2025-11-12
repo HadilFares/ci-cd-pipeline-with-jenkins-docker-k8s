@@ -14,6 +14,10 @@ spec:
     env:
     - name: JENKINS_URL
       value: "http://192.168.49.3:8080"
+    resources:
+      requests:
+        memory: "256Mi"
+        cpu: "250m"
   - name: docker
     image: docker:latest
     command: ['cat']
@@ -21,10 +25,18 @@ spec:
     volumeMounts:
     - name: docker-sock
       mountPath: /var/run/docker.sock
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
   - name: kubectl
     image: bitnami/kubectl:latest
     command: ['cat']
     tty: true
+    resources:
+      requests:
+        memory: "128Mi"
+        cpu: "100m"
   volumes:
   - name: docker-sock
     hostPath:
@@ -36,44 +48,34 @@ spec:
     environment {
         DOCKER_IMAGE = 'hadilfares/nodeapp'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
-        K8S_NAMESPACE = 'jenkins'
-        WORKSPACE_DIR = 'kubernetes Jenkins Deployment'
+        K8S_NAMESPACE = 'jenkins'  
     }
     
     stages {
-        stage('Navigate to Workspace') {
+        stage('Wait for Agent') {
             steps {
                 script {
-                    echo "Navigating to workspace directory: ${WORKSPACE_DIR}"
-                    dir("${WORKSPACE_DIR}") {
-                        sh '''
-                        echo "=== CURRENT DIRECTORY ==="
-                        pwd
-                        ls -la
-                        echo "Now in the correct directory with all files!"
-                        '''
-                    }
+                    echo "Waiting for agent to be fully ready..."
+                    sleep 10
                 }
+            }
+        }
+        
+        stage('Checkout Code') {
+            steps {
+                git branch: 'master', url: 'https://github.com/HadilFares/ci-cd-pipeline-with-jenkins-docker-k8s.git'
             }
         }
         
         stage('Build Docker Image') {
             steps {
-                dir("${WORKSPACE_DIR}") {
-                    container('docker') {
-                        script {
-                            echo "Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
-                            sh """
-                            # Vérifier les fichiers
-                            ls -la
-                            echo "Dockerfile content:"
-                            cat dockerfile
-                            
-                            # Builder l'image
-                            docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                            docker images | grep ${DOCKER_IMAGE}
-                            """
-                        }
+                container('docker') {
+                    script {
+                        echo "Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
+                        sh """
+                        docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
+                        docker images
+                        """
                     }
                 }
             }
@@ -81,21 +83,20 @@ spec:
         
         stage('Push to Docker Hub') {
             steps {
-                dir("${WORKSPACE_DIR}") {
-                    container('docker') {
-                        script {
-                            withCredentials([usernamePassword(
-                                credentialsId: 'dockerhublogin',
-                                usernameVariable: 'DOCKER_USER',
-                                passwordVariable: 'DOCKER_PASS'
-                            )]) {
-                                sh """
-                                echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                                echo " Pushing ${DOCKER_IMAGE}:${DOCKER_TAG} to Docker Hub..."
-                                docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
-                                echo "Image pushed successfully!"
-                                """
-                            }
+                container('docker') {
+                    script {
+                        withCredentials([usernamePassword(
+                            credentialsId: 'dockerhublogin',  
+                            usernameVariable: 'DOCKER_USER',
+                            passwordVariable: 'DOCKER_PASS'
+                        )]) {
+                            sh """
+                            echo "Logging into Docker Hub..."
+                            echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
+                            echo " Pushing image to Docker Hub..."
+                            docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                            echo " Image pushed successfully!"
+                            """
                         }
                     }
                 }
@@ -104,28 +105,35 @@ spec:
         
         stage('Deploy to K8s') {
             steps {
-                dir("${WORKSPACE_DIR}") {
-                    container('kubectl') {
-                        script {
-                            echo " Deploying to Kubernetes..."
-                            sh """
-                            # Vérifier les fichiers
-                            echo "=== DEPLOYMENT FILES ==="
-                            pwd
-                            ls -la *.yml
-                            cat k8s-deploymentservice.yml
-                            
-                            # Déployer
-                            kubectl apply -f k8s-deploymentservice.yml --namespace=${K8S_NAMESPACE}
-                            kubectl set image deployment/nodeapp-deployment \\
-                              nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
-                              --namespace=${K8S_NAMESPACE}
-                            kubectl rollout status deployment/nodeapp-deployment --namespace=${K8S_NAMESPACE}
-                            
-                            echo " Deployment successful!"
-                            kubectl get pods,svc,deployments --namespace=${K8S_NAMESPACE}
-                            """
-                        }
+                container('kubectl') {
+                    script {
+                        echo "Deploying to Kubernetes..."
+                        sh """
+                        # Vérifier l'accès Kubernetes
+                        echo " Kubernetes access test:"
+                        kubectl cluster-info
+                        kubectl get nodes
+                        # Appliquer la configuration
+                        echo "Applying Kubernetes configuration..."
+                        kubectl apply -f k8s-deploymentservice.yml --namespace=${K8S_NAMESPACE}
+                        
+                        # Mettre à jour l'image
+                        echo "Updating deployment image..."
+                        kubectl set image deployment/nodeapp-deployment \\
+                          nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
+                          --namespace=${K8S_NAMESPACE}
+                        
+                        # Vérifier le déploiement
+                        echo "Waiting for deployment rollout..."
+                        kubectl rollout status deployment/nodeapp-deployment \\
+                          --namespace=${K8S_NAMESPACE} --timeout=300s
+                        
+                        echo "Deployment successful!"
+                        
+                        # Afficher les résultats
+                        echo "Deployment status:"
+                        kubectl get pods,services,deployments --namespace=${K8S_NAMESPACE}
+                        """
                     }
                 }
             }
@@ -134,10 +142,14 @@ spec:
     
     post {
         success {
-            echo " CI/CD Pipeline COMPLETED SUCCESSFULLY!"
+            echo "CI/CD Pipeline COMPLETED SUCCESSFULLY!"
+            echo "Application deployed to Kubernetes!"
         }
         failure {
             echo "CI/CD Pipeline FAILED!"
+        }
+        always {
+            echo " Pipeline execution completed"
         }
     }
 }
