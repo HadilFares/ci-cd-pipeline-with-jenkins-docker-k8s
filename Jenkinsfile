@@ -72,7 +72,7 @@ spec:
                 container('docker') {
                     script {
                         withCredentials([usernamePassword(
-                            credentialsId: 'docker-hub-cred',
+                            credentialsId: 'dockerhublogin',
                             usernameVariable: 'DOCKER_USER',
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
