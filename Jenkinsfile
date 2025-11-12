@@ -52,24 +52,7 @@ spec:
             }
         }
         
-        stage('Install kubectl in jnlp') {
-            steps {
-                container('jnlp') {
-                    script {
-                        sh """
-                            # Install kubectl in the jnlp container
-                            curl -LO "https://dl.k8s.io/release/\$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
-                            chmod +x kubectl
-                            mv kubectl /usr/local/bin/
-                            
-                            # Verify installation
-                            kubectl version --client
-                        """
-                    }
-                }
-            }
-        }
-        
+
         stage('Build Docker Image') {
             steps {
                 container('docker') {
@@ -103,23 +86,40 @@ spec:
             }
         }
         
-        stage('Deploy to K8s') {
-            steps {
-                container('jnlp') {
-                    script {
-                        sh """
-                            echo "Deploying to Kubernetes..."
-                            kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | kubectl apply -f -
-                            kubectl apply -f k8s-deploymentservice.yml -n ${K8S_NAMESPACE}
-                            kubectl set image deployment/nodeapp-deployment \\
-                                nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
-                                -n ${K8S_NAMESPACE}
-                            kubectl rollout status deployment/nodeapp-deployment -n ${K8S_NAMESPACE} --timeout=300s
-                            kubectl get all -n ${K8S_NAMESPACE}
-                        """
-                    }
-                }
+stage('Install kubectl') {
+    steps {
+        container('jnlp') {
+            script {
+                sh '''
+                    # Download kubectl to /tmp (always writable)
+                    cd /tmp
+                    curl -LO "https://dl.k8s.io/release/$(curl -L -s https://dl.k8s.io/release/stable.txt)/bin/linux/amd64/kubectl"
+                    chmod +x kubectl
+                    ./kubectl version --client
+                '''
             }
         }
+    }
+}
+
+stage('Deploy to K8s') {
+    steps {
+        container('jnlp') {
+            script {
+                sh """
+                    cd /tmp
+                    echo "Deploying to Kubernetes..."
+                    ./kubectl create namespace ${K8S_NAMESPACE} --dry-run=client -o yaml | ./kubectl apply -f -
+                    ./kubectl apply -f k8s-deploymentservice.yml -n ${K8S_NAMESPACE}
+                    ./kubectl set image deployment/nodeapp-deployment \\
+                        nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
+                        -n ${K8S_NAMESPACE}
+                    ./kubectl rollout status deployment/nodeapp-deployment -n ${K8S_NAMESPACE} --timeout=300s
+                    ./kubectl get all -n ${K8S_NAMESPACE}
+                """
+            }
+        }
+    }
+}
     }
 }
