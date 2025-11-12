@@ -10,6 +10,9 @@ spec:
   containers:
   - name: jnlp
     image: jenkins/inbound-agent:latest
+    env:
+    - name: JENKINS_URL
+      value: "http://192.168.49.3:8080"
     resources:
       requests:
         memory: "256Mi"
@@ -40,13 +43,23 @@ spec:
 """
         }
     }
+    
     environment {
         DOCKER_IMAGE = 'hadilfares/nodeapp'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
-        K8S_NAMESPACE = 'jenkins'
+        K8S_NAMESPACE = 'jenkins'  
     }
     
     stages {
+        stage('Wait for Agent') {
+            steps {
+                script {
+                    echo "Waiting for agent to be fully ready..."
+                    sleep 10
+                }
+            }
+        }
+        
         stage('Checkout Code') {
             steps {
                 git branch: 'master', url: 'https://github.com/HadilFares/ci-cd-pipeline-with-jenkins-docker-k8s.git'
@@ -59,8 +72,24 @@ spec:
                     script {
                         echo "🔄 Building Docker image: ${DOCKER_IMAGE}:${DOCKER_TAG}"
                         sh """
+                        # Vérifier les fichiers
+                        echo "Workspace content:"
+                        ls -la
+                        
+                        # Vérifier le Dockerfile
+                        if [ -f "Dockerfile" ]; then
+                            echo "Dockerfile found"
+                        else
+                            echo " Dockerfile not found!"
+                            exit 1
+                        fi
+                        
+                        # Builder l'image
                         docker build -t ${DOCKER_IMAGE}:${DOCKER_TAG} .
-                        docker images
+                        
+                        # Vérifier que l'image est créée
+                        echo " Built images:"
+                        docker images | grep ${DOCKER_IMAGE} || echo "⚠️ Image not found in list"
                         """
                     }
                 }
@@ -72,14 +101,16 @@ spec:
                 container('docker') {
                     script {
                         withCredentials([usernamePassword(
-                            credentialsId: 'dockerhublogin',
+                            credentialsId: 'dockerhublogin',  
                             usernameVariable: 'DOCKER_USER',
                             passwordVariable: 'DOCKER_PASS'
                         )]) {
                             sh """
+                            echo "Logging into Docker Hub..."
                             echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                            echo "Pushing image to Docker Hub..."
+                            echo " Pushing image to Docker Hub..."
                             docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
+                            echo " Image pushed successfully!"
                             """
                         }
                     }
@@ -91,29 +122,45 @@ spec:
             steps {
                 container('kubectl') {
                     script {
-                        echo " Deploying to Kubernetes..."
+                        echo "Deploying to Kubernetes..."
                         sh """
                         # Vérifier l'accès Kubernetes
+                        echo " Kubernetes access test:"
                         kubectl cluster-info
                         kubectl get nodes
                         
-                        # Appliquer la configuration K8s
+                        # Vérifier le fichier YAML
+                        echo "Checking YAML file:"
+                        if [ -f "k8s-deploymentservice.yml" ]; then
+                            echo "YAML file found"
+                            cat k8s-deploymentservice.yml
+                        else
+                            echo "k8s-deploymentservice.yml not found!"
+                            echo "Available files:"
+                            ls -la *.yml || echo "No YAML files found"
+                            exit 1
+                        fi
+                        
+                        # Appliquer la configuration
+                        echo "Applying Kubernetes configuration..."
                         kubectl apply -f k8s-deploymentservice.yml --namespace=${K8S_NAMESPACE}
                         
                         # Mettre à jour l'image
+                        echo "Updating deployment image..."
                         kubectl set image deployment/nodeapp-deployment \\
-                        nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
-                        --namespace=${K8S_NAMESPACE} --record=true
+                          nodeapp-container=${DOCKER_IMAGE}:${DOCKER_TAG} \\
+                          --namespace=${K8S_NAMESPACE}
                         
-                        # Attendre le déploiement
+                        # Vérifier le déploiement
+                        echo "Waiting for deployment rollout..."
                         kubectl rollout status deployment/nodeapp-deployment \\
-                        --namespace=${K8S_NAMESPACE} --timeout=300s
+                          --namespace=${K8S_NAMESPACE} --timeout=300s
                         
                         echo "Deployment successful!"
                         
-                        # Afficher les infos
-                        kubectl get pods --namespace=${K8S_NAMESPACE}
-                        kubectl get services --namespace=${K8S_NAMESPACE}
+                        # Afficher les résultats
+                        echo "Deployment status:"
+                        kubectl get pods,services,deployments --namespace=${K8S_NAMESPACE}
                         """
                     }
                 }
@@ -123,11 +170,24 @@ spec:
     
     post {
         success {
-            echo " CI/CD Pipeline COMPLETED SUCCESSFULLY!"
-            echo " Application deployed to Kubernetes!"
+            echo "CI/CD Pipeline COMPLETED SUCCESSFULLY!"
+            echo "Application deployed to Kubernetes!"
         }
         failure {
-            echo " CI/CD Pipeline FAILED!"
+            echo "CI/CD Pipeline FAILED!"
+            script {
+                // Debug en cas d'échec
+                sh '''
+                echo "Debug information:"
+                echo "Workspace files:"
+                ls -la
+                echo "Docker images:"
+                docker images || true
+                '''
+            }
+        }
+        always {
+            echo " Pipeline execution completed"
         }
     }
 }
