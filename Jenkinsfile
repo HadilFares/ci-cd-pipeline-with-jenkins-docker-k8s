@@ -9,7 +9,7 @@ pipeline {
     environment {
         DOCKER_IMAGE = 'hadilfares/nodeapp'
         DOCKER_TAG = "${env.BUILD_NUMBER}"
-        K8S_NAMESPACE = 'default'
+        K8S_NAMESPACE = 'jenkins'
     }
     
     stages {
@@ -44,7 +44,7 @@ pipeline {
                         )]) {
                             sh """
                             echo \$DOCKER_PASS | docker login -u \$DOCKER_USER --password-stdin
-                            echo "📤 Pushing image to Docker Hub..."
+                            echo "Pushing image to Docker Hub..."
                             docker push ${DOCKER_IMAGE}:${DOCKER_TAG}
                             """
                         }
@@ -57,7 +57,7 @@ pipeline {
             steps {
                 container('kubectl') {
                     script {
-                        echo "🚀 Deploying to Kubernetes..."
+                        echo " Deploying to Kubernetes..."
                         sh """
                         # Vérifier l'accès Kubernetes
                         kubectl cluster-info
@@ -75,7 +75,7 @@ pipeline {
                         kubectl rollout status deployment/nodeapp-deployment \\
                         --namespace=${K8S_NAMESPACE} --timeout=300s
                         
-                        echo "✅ Deployment successful!"
+                        echo "Deployment successful!"
                         
                         # Afficher les infos
                         kubectl get pods --namespace=${K8S_NAMESPACE}
@@ -89,11 +89,11 @@ pipeline {
     
     post {
         success {
-            echo "🎉 CI/CD Pipeline COMPLETED SUCCESSFULLY!"
-            echo "🚀 Application deployed to Kubernetes!"
+            echo " CI/CD Pipeline COMPLETED SUCCESSFULLY!"
+            echo " Application deployed to Kubernetes!"
         }
         failure {
-            echo "❌ CI/CD Pipeline FAILED!"
+            echo " CI/CD Pipeline FAILED!"
         }
     }
 }
